@@ -1,4 +1,5 @@
 name: Publish Docker image
+
 on:
   schedule:
     - cron: "20 4 * * *"
@@ -10,31 +11,44 @@ on:
       - Dockerfile
       - .github/workflows/auto-build-on-change.yml
 
+env:
+  DOCKERHUB_REPO: lewimbes/caddy-cloudflare-l4
+  GHCR_REPO: ghcr.io/${{ github.repository }}
+
 jobs:
-  push_to_registries:
-    name: Push Docker image to multiple registries
+  check-updates:
+    name: Check for base image updates
+    runs-on: ubuntu-latest
+    outputs:
+      needs-updating: ${{ steps.check.outputs.needs-updating }}
+    steps:
+      - name: Check if Caddy base image updated
+        id: check
+        uses: lucacome/docker-image-update-checker@v3
+        with:
+          base-image: caddy:latest
+          image: lewimbes/caddy-cloudflare-l4:latest
+
+  build-and-push:
+    name: Build and Push Docker image
+    needs: check-updates
+    # Run if it's a manual trigger, a code push, or if the update checker found a new base image
+    if: github.event_name != 'schedule' || needs.check-updates.outputs.needs-updating == 'true'
     runs-on: ubuntu-latest
     permissions:
       packages: write
       contents: read
       attestations: write
       id-token: write
+
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v5
-
-      - name: Check for base image updates
-        id: check
-        uses: lucacome/docker-image-update-checker@v2
-        with:
-          base-image: caddy:latest
-          image: lewimbes/caddy-cloudflare-l4:latest
+        uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
         with:
           install: true
-        if: github.event_name != 'schedule' || steps.check.outputs.needs-updating == 'true'
 
       - name: Fetch Caddy version
         id: caddy
@@ -48,14 +62,12 @@ jobs:
           echo "major_minor=${ver%.*}"     >> "$GITHUB_OUTPUT"
           echo "major=${ver%%.*}"          >> "$GITHUB_OUTPUT"
           echo "Resolved Caddy version → $ver"
-        if: github.event_name != 'schedule' || steps.check.outputs.needs-updating == 'true'
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-        if: github.event_name != 'schedule' || steps.check.outputs.needs-updating == 'true'
 
       - name: Log in to the GitHub Container Registry
         uses: docker/login-action@v3
@@ -63,21 +75,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-        if: github.event_name != 'schedule' || steps.check.outputs.needs-updating == 'true'
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
-            lewimbes/caddy-cloudflare-l4
-            ghcr.io/${{ github.repository }}
+            ${{ env.DOCKERHUB_REPO }}
+            ${{ env.GHCR_REPO }}
           tags: |
             type=raw,value=${{ steps.caddy.outputs.full }}
             type=raw,value=${{ steps.caddy.outputs.major_minor }}
             type=raw,value=${{ steps.caddy.outputs.major }}
             type=raw,value=latest
-        if: github.event_name != 'schedule' || steps.check.outputs.needs-updating == 'true'
 
       - name: Build and push Docker images
         id: push
@@ -90,12 +100,10 @@ jobs:
             linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-        if: github.event_name != 'schedule' || steps.check.outputs.needs-updating == 'true'
 
       - name: Generate artifact attestation
         uses: actions/attest-build-provenance@v3
         with:
-          subject-name: ghcr.io/${{ github.repository }}
+          subject-name: ${{ env.GHCR_REPO }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-        if: github.event_name != 'schedule' || steps.check.outputs.needs-updating == 'true'
