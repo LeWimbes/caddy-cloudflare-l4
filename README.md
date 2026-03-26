@@ -8,7 +8,6 @@ Automatically builds and publishes **multi‑architecture Docker images** for [C
 
 ## ✨ Why use this image?
 
-- **ECH‑ready** – Caddy 2.10 introduces [Encrypted ClientHello](https://caddyserver.com/docs/automatic-https#encrypted-clienthello-ech), but it requires a DNS provider module to publish the necessary records. This image is already compiled with the Cloudflare DNS provider, so you can enable ECH right away.
 - **Cloudflare DNS provider built-in** – use `tls.dns.cloudflare`, ACME DNS challenges, or ECH without rebuilding Caddy.
 - **Layer 4 App built-in** – handle raw TCP & UDP connections.
 - **Multi‑arch** – runs on `linux/amd64` and `linux/arm64`.
